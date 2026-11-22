@@ -120,6 +120,8 @@ def test_preview_warns_when_plugin_is_not_release_enabled(repo):
     md = preview_markdown(release_preview(repo, head.get))
     assert "_Nothing._" in md
     assert "`wip`: has change files but isn't release-enabled" in md
+    assert "| `wip` | 0.1.0 (unchanged) |" in md
+    assert "<code>wip</code> 0.1.0 changelog" in md and "- Thing" in md
 
 
 def test_preview_with_no_changes():

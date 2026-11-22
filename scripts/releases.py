@@ -146,16 +146,30 @@ def preview_markdown(entries: list[dict]) -> str:
     if published:
         lines += ["| Plugin | Version |", "|---|---|"]
         lines += [f"| `{e['plugin']}` | {e['from']} → **{e['to']}** |" for e in published]
+        lines += _changelog_details(published)
     else:
         lines.append("_Nothing._")
+
     if skipped:
         names = ", ".join(f"`{e['plugin']}`" for e in skipped)
         lines += [
             "",
             f"> [!WARNING]\n> {names}: has change files but isn't release-enabled, so it "
             "won't be published. Its change files will only become changelog entries.",
+            "",
+            "**Changelog only (not published):**",
+            "",
+            "| Plugin | Version |",
+            "|---|---|",
         ]
-    for e in published:
+        lines += [f"| `{e['plugin']}` | {e['to']} (unchanged) |" for e in skipped]
+        lines += _changelog_details(skipped)
+    return "\n".join(lines) + "\n"
+
+
+def _changelog_details(entries: list[dict]) -> list[str]:
+    lines = []
+    for e in entries:
         lines += [
             "",
             f"<details><summary><code>{e['plugin']}</code> {e['to']} changelog</summary>",
@@ -164,7 +178,7 @@ def preview_markdown(entries: list[dict]) -> str:
             "",
             "</details>",
         ]
-    return "\n".join(lines) + "\n"
+    return lines
 
 
 def _git(*args: str) -> str:
