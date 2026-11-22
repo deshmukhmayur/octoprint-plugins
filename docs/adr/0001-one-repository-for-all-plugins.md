@@ -1,0 +1,3 @@
+# One repository for all plugins, each an independent package
+
+All plugins live in this one repository under `plugins/<identifier>/`, but each is a fully independent Python package with its own `pyproject.toml`, version, changelog and release tag. OctoPrint's Plugin Registry doesn't require one repository per plugin, and sharing tooling (CI, scaffolding template, release workflow) across plugins outweighs the extra care a monorepo needs for installs and update checks (see ADR-0002 and ADR-0003). Packaging several plugins into a single package was rejected because users couldn't install them separately.

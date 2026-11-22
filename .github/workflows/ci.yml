@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --all-packages
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - name: Test repo scripts
+        run: uv run pytest scripts/tests
+
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      plugins: ${{ steps.select.outputs.plugins }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: select
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            # New branch or unknown base: test everything.
+            plugins=$(echo pyproject.toml | python3 scripts/changed_plugins.py)
+          else
+            plugins=$(git diff --name-only "$BASE" HEAD | python3 scripts/changed_plugins.py)
+          fi
+          echo "plugins=$plugins" >> "$GITHUB_OUTPUT"
+          echo "Selected: $plugins"
+
+  test:
+    needs: changes
+    if: needs.changes.outputs.plugins != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: ${{ fromJSON(needs.changes.outputs.plugins) }}
+        # Oldest and newest supported Python.
+        python: ["3.9", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --all-packages
+      - run: uv run pytest plugins/${{ matrix.plugin }}
+      - run: uv build plugins/${{ matrix.plugin }} --out-dir dist

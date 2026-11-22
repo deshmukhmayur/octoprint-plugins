@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "OctoPrint-PlaceholderTheme"
+version = "0.1.0"
+description = "Placeholder for a custom OctoPrint UI theme. To be replaced by the real theme plugin."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "deshmukhmayur" }]
+requires-python = ">=3.9,<4"
+# OctoPrint itself is deliberately not listed: plugins run inside an existing OctoPrint install.
+dependencies = []
+classifiers = [
+    "Framework :: OctoPrint",
+    "Programming Language :: Python :: 3",
+]
+
+[project.urls]
+Homepage = "https://github.com/deshmukhmayur/octoprint-plugins/tree/main/plugins/placeholder_theme"
+Source = "https://github.com/deshmukhmayur/octoprint-plugins"
+Changelog = "https://github.com/deshmukhmayur/octoprint-plugins/blob/main/plugins/placeholder_theme/CHANGELOG.md"
+
+# The key is the plugin identifier. It must never change once the plugin is published.
+[project.entry-points."octoprint.plugin"]
+placeholder_theme = "octoprint_placeholder_theme"
+
+[tool.setuptools.packages.find]
+include = ["octoprint_placeholder_theme*"]
+
+[tool.setuptools.package-data]
+octoprint_placeholder_theme = ["static/**/*", "templates/**/*", "translations/**/*"]

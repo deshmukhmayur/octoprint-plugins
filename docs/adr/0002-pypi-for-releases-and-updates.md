@@ -1,0 +1,3 @@
+# PyPI for releases and update checks, not GitHub releases
+
+Each plugin is published to PyPI as `OctoPrint-<Name>`, and its update check uses OctoPrint's `pypi_release` type with `pip: "OctoPrint-<Name>=={target_version}"`. The usual choice, `github_release`, can't filter releases by tag prefix, so in a shared repository every plugin would see every other plugin's releases as its own updates. A `jsondata` check against a version file kept in the repo would also work, but it's one more thing to update by hand on every release. GitHub releases still exist, one per release tag, but only as release notes.

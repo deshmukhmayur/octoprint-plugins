@@ -1,0 +1,34 @@
+# Workspace root. This is not a package and is never published.
+# Each plugin under plugins/ is its own package with its own pyproject.toml.
+
+[project]
+name = "octoprint-plugins-workspace"
+version = "0"
+requires-python = ">=3.9"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["plugins/*"]
+
+[dependency-groups]
+dev = [
+    "OctoPrint>=1.10",
+    "pip",  # OctoPrint's Plugin Manager and updater shell out to pip; uv venvs lack it
+    "pytest>=8",
+    "ruff>=0.8",
+    "tomli>=2; python_version < '3.11'",
+]
+
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib"
+testpaths = ["plugins", "scripts/tests"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+extend-exclude = ["templates"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]

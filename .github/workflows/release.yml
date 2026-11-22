@@ -1,0 +1,120 @@
+name: Release
+
+# Push a tag named <plugin_identifier>-v<version>, e.g. placeholder_theme-v0.1.0.
+# The version must match plugins/<plugin_identifier>/pyproject.toml.
+on:
+  push:
+    tags: ["*-v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      plugin: ${{ steps.tag.outputs.plugin }}
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - id: tag
+        name: Parse and check tag
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          plugin="${tag%-v*}"
+          version="${tag##*-v}"
+          dir="plugins/$plugin"
+          if [ ! -f "$dir/pyproject.toml" ]; then
+            echo "::error::No plugin at $dir for tag $tag"; exit 1
+          fi
+          declared=$(uv run --no-project python -c "import tomllib,sys; print(tomllib.load(open(sys.argv[1],'rb'))['project']['version'])" "$dir/pyproject.toml")
+          if [ "$declared" != "$version" ]; then
+            echo "::error::Tag version $version does not match $dir/pyproject.toml version $declared"; exit 1
+          fi
+          echo "plugin=$plugin" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Build sdist and wheel
+        run: uv build "plugins/${{ steps.tag.outputs.plugin }}" --out-dir dist
+      - name: Build Plugin Manager archive
+        # A zip of the plugin's source folder; pip installs it directly. Served as <plugin>/latest.zip.
+        run: |
+          mkdir -p archive
+          git archive --format=zip --prefix="${{ steps.tag.outputs.plugin }}/" \
+            -o archive/latest.zip "HEAD:plugins/${{ steps.tag.outputs.plugin }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archive
+          path: archive/
+
+  publish-pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write # PyPI Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: [build, publish-pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLUGIN: ${{ needs.build.outputs.plugin }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          # Release notes = this version's section of the plugin's CHANGELOG.md.
+          awk -v v="## $VERSION" '$0==v{f=1;next} /^## /{f=0} f' "plugins/$PLUGIN/CHANGELOG.md" > notes.md
+          gh release create "$GITHUB_REF_NAME" dist/* --title "$PLUGIN $VERSION" --notes-file notes.md
+
+  pages:
+    needs: [build, publish-pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: gh-pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: archive
+          path: archive/
+      - name: Update <plugin>/latest.zip on gh-pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLUGIN: ${{ needs.build.outputs.plugin }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads "$url" gh-pages >/dev/null; then
+            git clone --depth 1 --branch gh-pages "$url" site
+          else
+            git init -b gh-pages site && git -C site remote add origin "$url"
+            touch site/.nojekyll
+          fi
+          mkdir -p "site/$PLUGIN"
+          cp archive/latest.zip "site/$PLUGIN/latest.zip"
+          cd site
+          git add -A
+          git commit -m "Publish $GITHUB_REF_NAME"
+          git push origin gh-pages
