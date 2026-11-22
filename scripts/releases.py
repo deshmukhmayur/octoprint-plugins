@@ -10,6 +10,9 @@ Usage:
     python scripts/releases.py check-changesets <base-ref>
         Fail if a release-enabled plugin changed since <base-ref> without a change file
         in .changeset/ naming it.
+    python scripts/releases.py preview
+        After `knope preview-release` has modified the working tree, print a Markdown summary
+        of the versions and changelog entries it produced, compared with HEAD.
 """
 
 from __future__ import annotations
@@ -18,6 +21,10 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -77,6 +84,89 @@ def missing_changesets(
     return sorted(changed - documented)
 
 
+PREVIEW_MARKER = "<!-- release-preview -->"
+
+
+def _changelog_section(changelog: str, version: str) -> str:
+    """The body of the `## <version>` section, without its heading."""
+    lines, body, inside = changelog.splitlines(), [], False
+    for line in lines:
+        if line.startswith("## "):
+            if inside:
+                break
+            inside = line[3:].split(" ")[0] == version
+            continue
+        if inside:
+            body.append(line)
+    return "\n".join(body).strip()
+
+
+def release_preview(repo_root: Path, read_head: Callable[[str], str | None]) -> list[dict]:
+    """Compare each knope package in the working tree with HEAD (via ``read_head(path)``).
+
+    Returns one entry per package whose version or changelog changed.
+    """
+    packages = _load_toml(repo_root / "knope.toml").get("packages", {})
+    entries = []
+    for plugin, cfg in sorted(packages.items()):
+        pyproject = f"plugins/{plugin}/pyproject.toml"
+        changelog = cfg.get("changelog", f"plugins/{plugin}/CHANGELOG.md")
+        after = tomllib.loads((repo_root / pyproject).read_text(encoding="utf-8"))
+        before = tomllib.loads(read_head(pyproject) or "[project]\nversion = ''")
+        new_version = after["project"]["version"]
+        old_version = before["project"]["version"]
+        new_log = (repo_root / changelog).read_text(encoding="utf-8")
+        if new_version == old_version and new_log == (read_head(changelog) or ""):
+            continue
+        entries.append(
+            {
+                "plugin": plugin,
+                "from": old_version,
+                "to": new_version,
+                "enabled": bool(cfg.get("versioned_files")),
+                "notes": _changelog_section(new_log, new_version),
+            }
+        )
+    return entries
+
+
+def preview_markdown(entries: list[dict]) -> str:
+    lines = [PREVIEW_MARKER, "### Release preview", ""]
+    published = [e for e in entries if e["enabled"]]
+    skipped = [e for e in entries if not e["enabled"]]
+    if not entries:
+        lines.append("No pending change files. Merging this PR won't release anything.")
+        return "\n".join(lines) + "\n"
+
+    lines.append(
+        "Based on the change files in this PR and any already pending on `main`. "
+        "After this PR is merged, merging the release PR will publish:"
+    )
+    lines.append("")
+    if published:
+        lines += ["| Plugin | Version |", "|---|---|"]
+        lines += [f"| `{e['plugin']}` | {e['from']} → **{e['to']}** |" for e in published]
+    else:
+        lines.append("_Nothing._")
+    if skipped:
+        names = ", ".join(f"`{e['plugin']}`" for e in skipped)
+        lines += [
+            "",
+            f"> [!WARNING]\n> {names}: has change files but isn't release-enabled, so it "
+            "won't be published. Its change files will only become changelog entries.",
+        ]
+    for e in published:
+        lines += [
+            "",
+            f"<details><summary><code>{e['plugin']}</code> {e['to']} changelog</summary>",
+            "",
+            e["notes"] or "_No notes._",
+            "",
+            "</details>",
+        ]
+    return "\n".join(lines) + "\n"
+
+
 def _git(*args: str) -> str:
     return subprocess.run(
         ["git", *args], cwd=REPO_ROOT, check=True, capture_output=True, text=True
@@ -104,6 +194,17 @@ def main(argv: list[str]) -> int:
             )
             return 1
         print("Change files OK.")
+        return 0
+
+    if argv[:1] == ["preview"]:
+
+        def read_head(path: str) -> str | None:
+            try:
+                return _git("show", f"HEAD:{path}")
+            except subprocess.CalledProcessError:
+                return None
+
+        print(preview_markdown(release_preview(REPO_ROOT, read_head)), end="")
         return 0
 
     print(__doc__, file=sys.stderr)

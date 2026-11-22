@@ -62,3 +62,10 @@ name = "release"
 
 [[workflows.steps]]
 type = "Release"
+
+# Run by the release-preview job in ci.yml on a throwaway checkout, to show what a PR would release.
+[[workflows]]
+name = "preview-release"
+
+[[workflows.steps]]
+type = "PrepareRelease"

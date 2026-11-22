@@ -6,10 +6,13 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from releases import (  # noqa: E402
+    PREVIEW_MARKER,
     changeset_packages,
     missing_changesets,
     pending_releases,
+    preview_markdown,
     release_enabled_plugins,
+    release_preview,
 )
 
 
@@ -62,3 +65,62 @@ def test_changed_enabled_plugin_needs_a_changeset():
 
 def test_test_only_changes_need_no_changeset():
     assert missing_changesets(["plugins/ready/tests/test_x.py"], [], ["ready"]) == []
+
+
+def _bump(repo, plugin, version, changelog):
+    path = repo / "plugins" / plugin
+    text = (path / "pyproject.toml").read_text()
+    head = {
+        f"plugins/{plugin}/pyproject.toml": text,
+        f"plugins/{plugin}/CHANGELOG.md": "# Changelog\n",
+    }
+    (path / "pyproject.toml").write_text(f'[project]\nname = "{plugin}"\nversion = "{version}"\n')
+    (path / "CHANGELOG.md").write_text(changelog)
+    return head
+
+
+def test_preview_lists_bumped_release_enabled_plugin_with_notes(repo):
+    head = _bump(
+        repo,
+        "ready",
+        "2.0.0",
+        "# Changelog\n\n## 2.0.0 (2026-11-22)\n\n### Breaking Changes\n\n- Big change\n\n"
+        "## 1.2.0\n\n- Old\n",
+    )
+    (repo / "plugins/wip/CHANGELOG.md").write_text("# Changelog\n")
+    head["plugins/wip/pyproject.toml"] = (repo / "plugins/wip/pyproject.toml").read_text()
+    head["plugins/wip/CHANGELOG.md"] = "# Changelog\n"
+
+    entries = release_preview(repo, head.get)
+    assert entries == [
+        {
+            "plugin": "ready",
+            "from": "1.2.0",
+            "to": "2.0.0",
+            "enabled": True,
+            "notes": "### Breaking Changes\n\n- Big change",
+        }
+    ]
+    md = preview_markdown(entries)
+    assert md.startswith(PREVIEW_MARKER)
+    assert "| `ready` | 1.2.0 → **2.0.0** |" in md
+    assert "- Big change" in md and "- Old" not in md
+
+
+def test_preview_warns_when_plugin_is_not_release_enabled(repo):
+    head = {
+        "plugins/wip/pyproject.toml": (repo / "plugins/wip/pyproject.toml").read_text(),
+        "plugins/wip/CHANGELOG.md": "# Changelog\n",
+        "plugins/ready/pyproject.toml": (repo / "plugins/ready/pyproject.toml").read_text(),
+    }
+    (repo / "plugins/wip/CHANGELOG.md").write_text("# Changelog\n\n## 0.1.0\n\n- Thing\n")
+    (repo / "plugins/ready").joinpath("CHANGELOG.md").write_text("")
+    head["plugins/ready/CHANGELOG.md"] = ""
+
+    md = preview_markdown(release_preview(repo, head.get))
+    assert "_Nothing._" in md
+    assert "`wip`: has change files but isn't release-enabled" in md
+
+
+def test_preview_with_no_changes():
+    assert "won't release anything" in preview_markdown([])

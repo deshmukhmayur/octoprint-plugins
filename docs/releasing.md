@@ -19,6 +19,8 @@ Versions and changelogs are managed by [knope](https://knope.tech) from **change
    Optional longer description, copied into the changelog.
    ```
    CI fails a PR that changes a release-enabled plugin (outside its `tests/`) with no change file naming it. For changes users won't notice, add the `no-changeset` label to the PR instead.
+
+   CI also comments on the PR with a **release preview**: the version each plugin would be published at and its changelog section. It reflects this PR's change files plus any already pending on `main`, and updates on every push.
 2. Merge PRs to `main` as usual. After each push to `main`, **Prepare release** builds or updates the **release PR** ("chore: prepare release", from the `release` branch). That PR bumps each affected plugin's version in `pyproject.toml` and `uv.lock`, adds its `CHANGELOG.md` section, and deletes the used change files.
 3. When you want to release, merge the release PR. **Release** then, for each plugin whose new version has no tag yet:
    1. Creates the tag `<identifier>/v<version>` and a GitHub release with that changelog section (knope).
