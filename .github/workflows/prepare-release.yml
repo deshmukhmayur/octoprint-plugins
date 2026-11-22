@@ -1,0 +1,47 @@
+name: Prepare release
+
+# On every push to main that has change files in .changeset/, (re)build the release PR:
+# knope bumps versions, writes changelogs and opens/updates a PR from the `release` branch.
+# Merging that PR runs release.yml.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare:
+    # Skip the merge of the release PR itself.
+    if: "!contains(github.event.head_commit.message, 'chore: prepare release')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: changes
+        name: Look for change files
+        run: |
+          if ls .changeset/*.md >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No change files; nothing to release."
+          fi
+      - if: steps.changes.outputs.found == 'true'
+        uses: astral-sh/setup-uv@v6
+      - if: steps.changes.outputs.found == 'true'
+        uses: knope-dev/action@v2.1.2
+        with:
+          version: 0.24.0
+      - if: steps.changes.outputs.found == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          knope prepare-release --verbose

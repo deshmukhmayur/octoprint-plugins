@@ -14,7 +14,15 @@ resolution-markers = [
 [manifest]
 members = [
     "octoprint-placeholdertheme",
-    "octoprint-plugins-workspace",
+]
+
+[manifest.dependency-groups]
+dev = [
+    { name = "octoprint", specifier = ">=1.10" },
+    { name = "pip" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "ruff", specifier = ">=0.8" },
+    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2" },
 ]
 
 [[package]]
@@ -1710,7 +1718,7 @@ wheels = [
 
 [[package]]
 name = "octoprint-placeholdertheme"
-version = "0.1.0"
+version = "0.0.0"
 source = { editable = "plugins/placeholder_theme" }
 
 [[package]]
@@ -1731,33 +1739,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c8/46/414ec48a6accf12b2aa09e2fa89a42958654fb6fa3fa2609a13cdc7eac37/octoprint_plugin_tool-0.1.1.tar.gz", hash = "sha256:c65adee7fccef1cd5794e0edbf32bd290bda32b3b0b8d9c03ba45e61783e3844", size = 22484, upload-time = "2026-05-04T13:14:53Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/13/d3/d3f74caf0b42f1a931382d7407f4b84fb7a71688d9baa0d1558667016918/octoprint_plugin_tool-0.1.1-py3-none-any.whl", hash = "sha256:2e574893e902531bf4fac4c4efefd0d64c672a69c89ebc53a17af3384b72ceba", size = 21815, upload-time = "2026-05-04T13:14:51.959Z" },
-]
-
-[[package]]
-name = "octoprint-plugins-workspace"
-version = "0"
-source = { virtual = "." }
-
-[package.dev-dependencies]
-dev = [
-    { name = "octoprint" },
-    { name = "pip", version = "26.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "pip", version = "26.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-    { name = "pytest", version = "8.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "pytest", version = "9.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-    { name = "ruff" },
-    { name = "tomli", marker = "python_full_version < '3.11'" },
-]
-
-[package.metadata]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "octoprint", specifier = ">=1.10" },
-    { name = "pip" },
-    { name = "pytest", specifier = ">=8" },
-    { name = "ruff", specifier = ">=0.8" },
-    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2" },
 ]
 
 [[package]]

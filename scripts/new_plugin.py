@@ -16,6 +16,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_DIR = REPO_ROOT / "templates" / "plugin"
+KNOPE_MARKER = "[changes]\n"  # new packages are inserted just above this section
 IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)*$")
 
 
@@ -42,6 +43,9 @@ def create_plugin(
     target = repo_root / "plugins" / identifier
     if target.exists():
         raise PluginExistsError(f"{target} already exists.")
+    knope_toml = repo_root / "knope.toml"
+    if KNOPE_MARKER not in knope_toml.read_text(encoding="utf-8"):
+        raise ValueError(f"{knope_toml} has no {KNOPE_MARKER.strip()} section to insert before.")
 
     display_name = display_name or " ".join(p.capitalize() for p in identifier.split("_"))
     tokens = {
@@ -67,7 +71,19 @@ def create_plugin(
 
     # Each package ships its own copy of the repo license (license-files can't point outside it).
     shutil.copyfile(repo_root / "LICENSE", target / "LICENSE")
+    _add_knope_package(knope_toml, identifier)
     return target
+
+
+def _add_knope_package(knope_toml: Path, identifier: str) -> None:
+    """List the plugin in knope.toml with only a changelog, so it isn't release-enabled yet."""
+    entry = (
+        f"[packages.{identifier}]\n"
+        f'# versioned_files = ["plugins/{identifier}/pyproject.toml"]  # uncomment to release\n'
+        f'changelog = "plugins/{identifier}/CHANGELOG.md"\n\n'
+    )
+    text = knope_toml.read_text(encoding="utf-8")
+    knope_toml.write_text(text.replace(KNOPE_MARKER, entry + KNOPE_MARKER, 1), encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -85,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Created {target.relative_to(REPO_ROOT)}")
     print("Next: run `uv sync --all-packages` to install it into the dev environment.")
+    print("It is listed in knope.toml but not release-enabled; see docs/releasing.md.")
     return 0
 
 

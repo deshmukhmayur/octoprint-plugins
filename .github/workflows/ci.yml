@@ -2,6 +2,8 @@ name: CI
 
 on:
   pull_request:
+    # labeled/unlabeled so adding or removing `no-changeset` re-runs the check.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
 
@@ -19,6 +21,60 @@ jobs:
       - run: uv run ruff format --check .
       - name: Test repo scripts
         run: uv run pytest scripts/tests
+
+  changeset:
+    # Every user-facing change to a release-enabled plugin needs a change file (see docs/releasing.md).
+    if: >-
+      github.event_name == 'pull_request' && github.head_ref != 'release' &&
+      !contains(github.event.pull_request.labels.*.name, 'no-changeset')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python3 scripts/releases.py check-changesets "origin/${{ github.base_ref }}"
+
+  release-preview:
+    # Comments on the PR with the versions its change files would release (one comment, kept up to date).
+    if: github.event_name == 'pull_request' && github.head_ref != 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: knope-dev/action@v2.1.2
+        with:
+          version: 0.24.0
+      - id: bump
+        name: Run knope's version bump on this checkout
+        run: |
+          if ls .changeset/*.md >/dev/null 2>&1; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            knope preview-release
+          fi
+      - name: Build preview
+        run: |
+          python3 scripts/releases.py preview > preview.md
+          cat preview.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Post or update PR comment
+        # Only start a comment once there are change files; afterwards keep it current.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          HAS_CHANGES: ${{ steps.bump.outputs.has_changes }}
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- release-preview -->")) | .id' | head -n 1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@preview.md >/dev/null
+          elif [ "$HAS_CHANGES" = "true" ]; then
+            gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@preview.md >/dev/null
+          fi
 
   changes:
     runs-on: ubuntu-latest

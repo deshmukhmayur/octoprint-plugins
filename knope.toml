@@ -1,0 +1,71 @@
+# Version and changelog management. See docs/releasing.md.
+#
+# Every plugin is listed under [packages] (scripts/new_plugin.py adds it). A plugin is
+# release-enabled once its entry has `versioned_files`. From then on, `knope release` releases it
+# whenever its version has no `<identifier>/v<version>` tag, so only enable a plugin when it is
+# ready to be published. Plugins without `versioned_files` are never released.
+
+# Placeholder: never released.
+[packages.placeholder_theme]
+changelog = "plugins/placeholder_theme/CHANGELOG.md"
+
+[changes]
+# Versions are bumped from .changeset/ files only, never from commit messages.
+ignore_conventional_commits = true
+
+[github]
+owner = "deshmukhmayur"
+repo = "octoprint-plugins"
+
+[[workflows]]
+name = "document-change"
+
+[[workflows.steps]]
+type = "CreateChangeFile"
+
+# Run by .github/workflows/prepare-release.yml on every push to main that has change files.
+[[workflows]]
+name = "prepare-release"
+
+[[workflows.steps]]
+type = "Command"
+command = "git switch -c release"
+
+[[workflows.steps]]
+type = "PrepareRelease"
+
+[[workflows.steps]]
+type = "Command"
+command = "uv lock"
+
+[[workflows.steps]]
+type = "Command"
+command = "git commit -am \"chore: prepare release\""
+
+[[workflows.steps]]
+type = "Command"
+command = "git push --force --set-upstream origin release"
+
+[[workflows.steps]]
+type = "CreatePullRequest"
+base = "main"
+
+[workflows.steps.title]
+template = "chore: prepare release"
+
+[workflows.steps.body]
+template = "Merging this PR releases every plugin whose version it bumps. See the CHANGELOG.md diffs for what's included."
+
+# Run by .github/workflows/release.yml when the release PR is merged.
+[[workflows]]
+name = "release"
+
+[[workflows.steps]]
+type = "Release"
+
+# Run by the release-preview job in ci.yml on a throwaway checkout, to show what a PR would release.
+[[workflows]]
+name = "preview-release"
+
+[[workflows.steps]]
+type = "PrepareRelease"
