@@ -1718,7 +1718,7 @@ wheels = [
 
 [[package]]
 name = "octoprint-placeholdertheme"
-version = "0.1.0"
+version = "0.0.0"
 source = { editable = "plugins/placeholder_theme" }
 
 [[package]]

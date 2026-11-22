@@ -45,7 +45,9 @@ versioned_files = ["plugins/filament_tracker/pyproject.toml"]
 changelog = "plugins/filament_tracker/CHANGELOG.md"
 ```
 
-Without `versioned_files`, a plugin is never released. Its change files still become changelog entries, but nothing is tagged or published. knope releases any release-enabled plugin whose current version has no tag, so a newly enabled plugin goes out at its starting version (`0.1.0`) the next time a release PR is merged.
+Without `versioned_files`, a plugin is never released. Don't add change files for it yet: they would still become changelog entries, but nothing would be tagged or published.
+
+New plugins start at version `0.0.0` with an empty changelog. A change file always bumps the version, so the **first release is a `major` change file** (e.g. `# First release`), which takes the plugin from `0.0.0` to `0.1.0`.
 
 ## One-time setup
 
@@ -64,7 +66,15 @@ The release PR is opened with the built-in Actions token, so GitHub doesn't run 
    - Owner: `deshmukhmayur`, Repository: `octoprint-plugins`
    - Workflow: `release.yml`, Environment: `pypi`
    The first successful release creates the PyPI project.
-2. **Release-enable it** in `knope.toml` (see above), in a PR with a change file for it.
+2. **Release-enable it** in `knope.toml` (see above). In the same PR, add a `major` change file for it:
+   ```md
+   ---
+   <identifier>: major
+   ---
+
+   # First release
+   ```
+   Merge it, then merge the release PR it produces. The plugin is published as `0.1.0`.
 3. **Plugin Registry** (after the first release): open a PR to https://github.com/OctoPrint/plugins.octoprint.org adding `_plugins/<identifier>.md`, following https://plugins.octoprint.org/help/registering/. Use:
    - `archive`: `https://deshmukhmayur.github.io/octoprint-plugins/<identifier>/latest.zip`
    - `homepage`: `https://github.com/deshmukhmayur/octoprint-plugins/tree/main/plugins/<identifier>`

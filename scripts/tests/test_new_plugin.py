@@ -24,6 +24,7 @@ def test_renders_template_with_names_derived_from_identifier(repo):
 
     pyproject = (target / "pyproject.toml").read_text()
     assert 'name = "OctoPrint-FilamentTracker"' in pyproject
+    assert 'version = "0.0.0"' in pyproject  # first release is a `major` change file → 0.1.0
     assert 'filament_tracker = "octoprint_filament_tracker"' in pyproject
 
     init = (target / "octoprint_filament_tracker" / "__init__.py").read_text()
