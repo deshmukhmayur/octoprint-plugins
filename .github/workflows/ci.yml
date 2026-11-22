@@ -2,6 +2,8 @@ name: CI
 
 on:
   pull_request:
+    # labeled/unlabeled so adding or removing `no-changeset` re-runs the check.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
 
@@ -19,6 +21,18 @@ jobs:
       - run: uv run ruff format --check .
       - name: Test repo scripts
         run: uv run pytest scripts/tests
+
+  changeset:
+    # Every user-facing change to a release-enabled plugin needs a change file (see docs/releasing.md).
+    if: >-
+      github.event_name == 'pull_request' && github.head_ref != 'release' &&
+      !contains(github.event.pull_request.labels.*.name, 'no-changeset')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python3 scripts/releases.py check-changesets "origin/${{ github.base_ref }}"
 
   changes:
     runs-on: ubuntu-latest

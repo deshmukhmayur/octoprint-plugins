@@ -7,12 +7,14 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from new_plugin import REPO_ROOT, PluginExistsError, create_plugin  # noqa: E402
+from releases import release_enabled_plugins  # noqa: E402
 
 
 @pytest.fixture
 def repo(tmp_path):
     shutil.copytree(REPO_ROOT / "templates", tmp_path / "templates")
     shutil.copyfile(REPO_ROOT / "LICENSE", tmp_path / "LICENSE")
+    shutil.copyfile(REPO_ROOT / "knope.toml", tmp_path / "knope.toml")
     (tmp_path / "plugins").mkdir()
     return tmp_path
 
@@ -57,3 +59,11 @@ def test_refuses_to_overwrite_existing_plugin(repo):
     create_plugin("theme", repo_root=repo)
     with pytest.raises(PluginExistsError):
         create_plugin("theme", repo_root=repo)
+
+
+def test_new_plugin_is_listed_in_knope_but_not_release_enabled(repo):
+    create_plugin("filament_tracker", repo_root=repo)
+    knope = (repo / "knope.toml").read_text()
+    assert "[packages.filament_tracker]" in knope
+    assert 'changelog = "plugins/filament_tracker/CHANGELOG.md"' in knope
+    assert "filament_tracker" not in release_enabled_plugins(repo)

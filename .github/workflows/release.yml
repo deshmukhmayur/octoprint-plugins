@@ -1,92 +1,111 @@
 name: Release
 
-# Push a tag named <plugin_identifier>-v<version>, e.g. placeholder_theme-v0.1.0.
-# The version must match plugins/<plugin_identifier>/pyproject.toml.
+# Runs when the release PR (branch `release`, opened by prepare-release.yml) is merged.
+#
+# Everything happens in this one workflow on purpose:
+# - Tags and releases created with GITHUB_TOKEN don't trigger other workflows, so a separate
+#   tag-triggered publish workflow would never run.
+# - PyPI Trusted Publishing is registered against this file name (release.yml).
 on:
-  push:
-    tags: ["*-v*"]
+  pull_request:
+    types: [closed]
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
-  build:
+  release:
+    if: github.event.pull_request.merged && github.head_ref == 'release'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
-      plugin: ${{ steps.tag.outputs.plugin }}
-      version: ${{ steps.tag.outputs.version }}
+      releases: ${{ steps.plan.outputs.releases }}
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - id: tag
-        name: Parse and check tag
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+      - id: plan
+        name: Find plugins to release
         run: |
-          tag="${GITHUB_REF_NAME}"
-          plugin="${tag%-v*}"
-          version="${tag##*-v}"
-          dir="plugins/$plugin"
-          if [ ! -f "$dir/pyproject.toml" ]; then
-            echo "::error::No plugin at $dir for tag $tag"; exit 1
-          fi
-          declared=$(uv run --no-project python -c "import tomllib,sys; print(tomllib.load(open(sys.argv[1],'rb'))['project']['version'])" "$dir/pyproject.toml")
-          if [ "$declared" != "$version" ]; then
-            echo "::error::Tag version $version does not match $dir/pyproject.toml version $declared"; exit 1
-          fi
-          echo "plugin=$plugin" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+          releases=$(python3 scripts/releases.py pending)
+          echo "releases=$releases" >> "$GITHUB_OUTPUT"
+          echo "Releasing: $releases"
+      - uses: knope-dev/action@v2.1.2
+        with:
+          version: 0.24.0
+      - name: Create tags and GitHub releases
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: knope release --verbose
+
+  build:
+    needs: release
+    if: needs.release.outputs.releases != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.release.outputs.releases) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+      - uses: astral-sh/setup-uv@v6
       - name: Build sdist and wheel
-        run: uv build "plugins/${{ steps.tag.outputs.plugin }}" --out-dir dist
+        run: uv build "plugins/${{ matrix.plugin }}" --out-dir dist
       - name: Build Plugin Manager archive
         # A zip of the plugin's source folder; pip installs it directly. Served as <plugin>/latest.zip.
         run: |
           mkdir -p archive
-          git archive --format=zip --prefix="${{ steps.tag.outputs.plugin }}/" \
-            -o archive/latest.zip "HEAD:plugins/${{ steps.tag.outputs.plugin }}"
+          git archive --format=zip --prefix="${{ matrix.plugin }}/" \
+            -o archive/latest.zip "HEAD:plugins/${{ matrix.plugin }}"
       - uses: actions/upload-artifact@v4
         with:
-          name: dist
+          name: dist-${{ matrix.plugin }}
           path: dist/
       - uses: actions/upload-artifact@v4
         with:
-          name: archive
+          name: archive-${{ matrix.plugin }}
           path: archive/
 
   publish-pypi:
-    needs: build
+    needs: [release, build]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
       id-token: write # PyPI Trusted Publishing
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.release.outputs.releases) }}
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: dist
+          name: dist-${{ matrix.plugin }}
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
 
-  github-release:
-    needs: [build, publish-pypi]
+  release-assets:
+    needs: [release, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.release.outputs.releases) }}
     steps:
-      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: dist
+          name: dist-${{ matrix.plugin }}
           path: dist/
-      - name: Create GitHub release
+      - name: Attach built files to the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          PLUGIN: ${{ needs.build.outputs.plugin }}
-          VERSION: ${{ needs.build.outputs.version }}
-        run: |
-          # Release notes = this version's section of the plugin's CHANGELOG.md.
-          awk -v v="## $VERSION" '$0==v{f=1;next} /^## /{f=0} f' "plugins/$PLUGIN/CHANGELOG.md" > notes.md
-          gh release create "$GITHUB_REF_NAME" dist/* --title "$PLUGIN $VERSION" --notes-file notes.md
+        run: gh release upload "${{ matrix.tag }}" dist/* --repo "$GITHUB_REPOSITORY" --clobber
 
   pages:
-    needs: [build, publish-pypi]
+    needs: [release, publish-pypi]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -96,12 +115,11 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: archive
-          path: archive/
+          pattern: archive-*
+          path: archives/
       - name: Update <plugin>/latest.zip on gh-pages
         env:
           GH_TOKEN: ${{ github.token }}
-          PLUGIN: ${{ needs.build.outputs.plugin }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -112,9 +130,12 @@ jobs:
             git init -b gh-pages site && git -C site remote add origin "$url"
             touch site/.nojekyll
           fi
-          mkdir -p "site/$PLUGIN"
-          cp archive/latest.zip "site/$PLUGIN/latest.zip"
+          for dir in archives/archive-*; do
+            plugin="${dir#archives/archive-}"
+            mkdir -p "site/$plugin"
+            cp "$dir/latest.zip" "site/$plugin/latest.zip"
+          done
           cd site
           git add -A
-          git commit -m "Publish $GITHUB_REF_NAME"
+          git commit -m "Publish release from PR #${{ github.event.pull_request.number }}"
           git push origin gh-pages

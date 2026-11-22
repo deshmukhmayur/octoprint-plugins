@@ -26,11 +26,21 @@ A stand-in plugin that exists only to exercise the repository's tooling and is n
 ## Distribution
 
 **Release**:
-One published version of one plugin, triggered by a release tag.
+One published version of one plugin.
 
 **Release tag**:
-A git tag of the form `<plugin identifier>-v<version>` that marks and triggers a release.
+A git tag of the form `<plugin identifier>/v<version>` that marks a release.
 _Avoid_: Version tag
+
+**Change file**:
+A small Markdown file in `.changeset/` recording a user-facing change to one or more plugins and how big it is (major, minor or patch).
+_Avoid_: Changeset (for the file), changelog fragment
+
+**Release PR**:
+The pull request that collects all pending change files into version bumps and changelog entries; merging it releases those plugins.
+
+**Release-enabled**:
+Said of a plugin that is ready to be published; only release-enabled plugins are ever released.
 
 **Archive URL**:
 The stable link the Plugin Registry uses for a plugin's first install; always serves the latest release.
