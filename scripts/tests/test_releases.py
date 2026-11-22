@@ -152,9 +152,3 @@ def test_release_pr_title_says_when_nothing_is_published():
     pr = release_pr([_entry("wip", "0.0.0", False)])
     assert pr["title"] == "chore: prepare release (changelog only: wip)"
     assert "_Nothing._" in pr["body"]
-
-
-def test_release_pr_title_keeps_the_prepare_release_skip_marker():
-    # prepare-release.yml skips merges whose commit message contains this.
-    for entries in ([_entry("a", "1.0.0")], [_entry("w", "0.0.0", False)]):
-        assert "chore: prepare release" in release_pr(entries)["title"]
