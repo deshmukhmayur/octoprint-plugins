@@ -3,7 +3,8 @@ name: Prepare release
 # On every push to main that has change files in .changeset/, (re)build the release PR:
 # knope bumps versions, writes changelogs and pushes the `release` branch; we then open or update
 # the release PR with a title and body listing what it will publish.
-# Merging that PR runs release.yml.
+# Merging that PR runs release.yml. That merge deletes the change files it used, so the push it
+# makes to main finds none and this workflow stops.
 on:
   push:
     branches: [main]
@@ -18,8 +19,6 @@ permissions:
 
 jobs:
   prepare:
-    # Skip the merge of the release PR itself.
-    if: "!contains(github.event.head_commit.message, 'chore: prepare release')"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

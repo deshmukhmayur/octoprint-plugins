@@ -149,8 +149,7 @@ def preview_markdown(entries: list[dict]) -> str:
 
 
 def release_pr(entries: list[dict]) -> dict:
-    """Title and body of the release PR. The title keeps ``chore: prepare release`` because
-    prepare-release.yml skips commits whose message contains it."""
+    """Title and body of the release PR."""
     published = [f"{e['plugin']} {e['to']}" for e in entries if e["enabled"]]
     if len(published) > 3:
         title = f"chore: prepare release of {len(published)} plugins"
