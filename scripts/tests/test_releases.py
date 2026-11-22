@@ -12,6 +12,7 @@ from releases import (  # noqa: E402
     pending_releases,
     preview_markdown,
     release_enabled_plugins,
+    release_pr,
     release_preview,
 )
 
@@ -126,3 +127,34 @@ def test_preview_warns_when_plugin_is_not_release_enabled(repo):
 
 def test_preview_with_no_changes():
     assert "won't release anything" in preview_markdown([])
+
+
+def _entry(plugin, to, enabled=True, notes="- Change"):
+    return {"plugin": plugin, "from": "0.0.0", "to": to, "enabled": enabled, "notes": notes}
+
+
+def test_release_pr_title_names_published_plugins_and_versions():
+    pr = release_pr(
+        [_entry("alpha", "0.1.0"), _entry("beta", "1.2.0"), _entry("wip", "0.0.0", False)]
+    )
+    assert pr["title"] == "chore: prepare release of alpha 0.1.0, beta 1.2.0"
+    assert "Merging this PR will publish:" in pr["body"]
+    assert "| `alpha` | 0.0.0 → **0.1.0** |" in pr["body"]
+    assert "`wip`: has change files but isn't release-enabled" in pr["body"]
+
+
+def test_release_pr_title_counts_many_plugins():
+    pr = release_pr([_entry(name, "1.0.0") for name in "abcd"])
+    assert pr["title"] == "chore: prepare release of 4 plugins"
+
+
+def test_release_pr_title_says_when_nothing_is_published():
+    pr = release_pr([_entry("wip", "0.0.0", False)])
+    assert pr["title"] == "chore: prepare release (changelog only: wip)"
+    assert "_Nothing._" in pr["body"]
+
+
+def test_release_pr_title_keeps_the_prepare_release_skip_marker():
+    # prepare-release.yml skips merges whose commit message contains this.
+    for entries in ([_entry("a", "1.0.0")], [_entry("w", "0.0.0", False)]):
+        assert "chore: prepare release" in release_pr(entries)["title"]

@@ -1,7 +1,8 @@
 name: Prepare release
 
 # On every push to main that has change files in .changeset/, (re)build the release PR:
-# knope bumps versions, writes changelogs and opens/updates a PR from the `release` branch.
+# knope bumps versions, writes changelogs and pushes the `release` branch; we then open or update
+# the release PR with a title and body listing what it will publish.
 # Merging that PR runs release.yml.
 on:
   push:
@@ -45,3 +46,17 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           knope prepare-release --verbose
+      - if: steps.changes.outputs.found == 'true'
+        name: Open or update the release PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/releases.py release-pr origin/main > "$RUNNER_TEMP/pr.json"
+          title=$(jq -r .title "$RUNNER_TEMP/pr.json")
+          jq -r .body "$RUNNER_TEMP/pr.json" > "$RUNNER_TEMP/body.md"
+          number=$(gh pr list --head release --base main --state open --json number -q '.[0].number')
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh pr create --head release --base main --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          fi

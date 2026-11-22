@@ -46,15 +46,7 @@ command = "git commit -am \"chore: prepare release\""
 type = "Command"
 command = "git push --force --set-upstream origin release"
 
-[[workflows.steps]]
-type = "CreatePullRequest"
-base = "main"
-
-[workflows.steps.title]
-template = "chore: prepare release"
-
-[workflows.steps.body]
-template = "Merging this PR releases every plugin whose version it bumps. See the CHANGELOG.md diffs for what's included."
+# prepare-release.yml then opens or updates the release PR with a generated title and body.
 
 # Run by .github/workflows/release.yml when the release PR is merged.
 [[workflows]]

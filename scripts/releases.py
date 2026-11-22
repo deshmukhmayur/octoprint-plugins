@@ -13,6 +13,8 @@ Usage:
     python scripts/releases.py preview
         After `knope preview-release` has modified the working tree, print a Markdown summary
         of the versions and changelog entries it produced, compared with HEAD.
+    python scripts/releases.py release-pr <base-ref>
+        JSON {"title", "body"} for the release PR, comparing the working tree with <base-ref>.
 """
 
 from __future__ import annotations
@@ -130,19 +132,47 @@ def release_preview(repo_root: Path, read_head: Callable[[str], str | None]) -> 
     return entries
 
 
+PR_PREVIEW_INTRO = (
+    "Based on the change files in this PR and any already pending on `main`. "
+    "After this PR is merged, merging the release PR will publish:"
+)
+
+
 def preview_markdown(entries: list[dict]) -> str:
+    """The sticky release preview comment on a pull request."""
     lines = [PREVIEW_MARKER, "### Release preview", ""]
-    published = [e for e in entries if e["enabled"]]
-    skipped = [e for e in entries if not e["enabled"]]
     if not entries:
         lines.append("No pending change files. Merging this PR won't release anything.")
-        return "\n".join(lines) + "\n"
+    else:
+        lines += _summary(entries, PR_PREVIEW_INTRO)
+    return "\n".join(lines) + "\n"
 
-    lines.append(
-        "Based on the change files in this PR and any already pending on `main`. "
-        "After this PR is merged, merging the release PR will publish:"
-    )
-    lines.append("")
+
+def release_pr(entries: list[dict]) -> dict:
+    """Title and body of the release PR. The title keeps ``chore: prepare release`` because
+    prepare-release.yml skips commits whose message contains it."""
+    published = [f"{e['plugin']} {e['to']}" for e in entries if e["enabled"]]
+    if len(published) > 3:
+        title = f"chore: prepare release of {len(published)} plugins"
+    elif published:
+        title = f"chore: prepare release of {', '.join(published)}"
+    else:
+        skipped = ", ".join(e["plugin"] for e in entries)
+        title = f"chore: prepare release (changelog only: {skipped})"
+    body = _summary(entries, "Merging this PR will publish:") + [
+        "",
+        "---",
+        "",
+        "_This PR is rebuilt from the change files in `.changeset/` on every push to `main`, "
+        "so edits to it are overwritten. See [docs/releasing.md](https://github.com/deshmukhmayur/octoprint-plugins/blob/main/docs/releasing.md)._",
+    ]
+    return {"title": title, "body": "\n".join(body) + "\n"}
+
+
+def _summary(entries: list[dict], intro: str) -> list[str]:
+    published = [e for e in entries if e["enabled"]]
+    skipped = [e for e in entries if not e["enabled"]]
+    lines = [intro, ""]
     if published:
         lines += ["| Plugin | Version |", "|---|---|"]
         lines += [f"| `{e['plugin']}` | {e['from']} → **{e['to']}** |" for e in published]
@@ -164,7 +194,7 @@ def preview_markdown(entries: list[dict]) -> str:
         ]
         lines += [f"| `{e['plugin']}` | {e['to']} (unchanged) |" for e in skipped]
         lines += _changelog_details(skipped)
-    return "\n".join(lines) + "\n"
+    return lines
 
 
 def _changelog_details(entries: list[dict]) -> list[str]:
@@ -210,15 +240,20 @@ def main(argv: list[str]) -> int:
         print("Change files OK.")
         return 0
 
-    if argv[:1] == ["preview"]:
+    if argv[:1] in (["preview"], ["release-pr"]) and len(argv) <= 2:
+        base = argv[1] if len(argv) == 2 else "HEAD"
 
-        def read_head(path: str) -> str | None:
+        def read_base(path: str) -> str | None:
             try:
-                return _git("show", f"HEAD:{path}")
+                return _git("show", f"{base}:{path}")
             except subprocess.CalledProcessError:
                 return None
 
-        print(preview_markdown(release_preview(REPO_ROOT, read_head)), end="")
+        entries = release_preview(REPO_ROOT, read_base)
+        if argv[0] == "preview":
+            print(preview_markdown(entries), end="")
+        else:
+            print(json.dumps(release_pr(entries)))
         return 0
 
     print(__doc__, file=sys.stderr)
